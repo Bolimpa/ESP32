@@ -1,0 +1,11 @@
+{
+    "files.associations": {
+        "random": "cpp",
+        "cmath": "cpp",
+        "ibm": "c"
+    },
+    "cSpell.words": [
+        "perlin",
+        "SSID"
+    ]
+}
