@@ -385,27 +385,27 @@ void drawGear(int32_t centerX, int32_t centerY, int32_t outerRadius, int32_t inn
 
   sprite.fillCircle(centerX, centerY, innerRadius - 1, TFT_BLACK);
 
-  sprite.drawSmoothRoundRect(centerX - innerRadius * 0.5, centerY - innerRadius * 0.5, innerRadius * 0.5, innerRadius * 0.5, 0, 0, TFT_WHITE, TFT_BLACK);
+  sprite.drawSmoothRoundRect(centerX - innerRadius * 0.5+1, centerY - innerRadius * 0.5+1, innerRadius * 0.5, innerRadius * 0.5, 0, 0, TFT_WHITE, TFT_BLACK);
 
   for (int32_t i = 0; i < numTeeth; i++)
   {
-    sprite.drawSmoothArc(centerX, centerY, innerRadius, innerRadius, (i * 2.0f) / (numTeeth * 2.0f) * 360.0f + 30, ((i * 2.0f + 1.0f) / (numTeeth * 2.0f)) * 360.0f + 21.0f, TFT_WHITE, true);
-    float x0 = centerX + innerRadius * cos(toothAngle * i + toothAngle / 3);
-    float y0 = centerY + innerRadius * sin(toothAngle * i + toothAngle / 3);
-    float x1 = centerX + outerRadius * cos(toothAngle * i + toothAngle / 3 * (innerRadius / float(outerRadius)));
-    float y1 = centerY + outerRadius * sin(toothAngle * i + toothAngle / 3 * (innerRadius / float(outerRadius)));
+    sprite.drawSmoothArc(centerX, centerY, innerRadius, innerRadius, int32_t((i * 2.0f) / (numTeeth * 2.0f) * 360.0f + 29 + 360 * progress) % 360, int32_t(((i * 2.0f + 1.0f) / (numTeeth * 2.0f)) * 360.0f + 23.0f + 360 * progress) % 360, TFT_WHITE, false);
+    float x0 = centerX + innerRadius * cos(toothAngle * i + toothAngle / 3 + 2 * M_PI * progress);
+    float y0 = centerY + innerRadius * sin(toothAngle * i + toothAngle / 3 + 2 * M_PI * progress);
+    float x1 = centerX + outerRadius * cos(toothAngle * i + toothAngle / 3 * (innerRadius / float(outerRadius)) + 2 * M_PI * progress);
+    float y1 = centerY + outerRadius * sin(toothAngle * i + toothAngle / 3 * (innerRadius / float(outerRadius)) + 2 * M_PI * progress);
 
-    float x2 = centerX + innerRadius * cos(toothAngle * i - toothAngle / 3);
-    float y2 = centerY + innerRadius * sin(toothAngle * i - toothAngle / 3);
-    float x3 = centerX + outerRadius * cos(toothAngle * i - toothAngle / 3 * (innerRadius / float(outerRadius)));
-    float y3 = centerY + outerRadius * sin(toothAngle * i - toothAngle / 3 * (innerRadius / float(outerRadius)));
+    float x2 = centerX + innerRadius * cos(toothAngle * i - toothAngle / 3 + 2 * M_PI * progress);
+    float y2 = centerY + innerRadius * sin(toothAngle * i - toothAngle / 3 + 2 * M_PI * progress);
+    float x3 = centerX + outerRadius * cos(toothAngle * i - toothAngle / 3 * (innerRadius / float(outerRadius)) + 2 * M_PI * progress);
+    float y3 = centerY + outerRadius * sin(toothAngle * i - toothAngle / 3 * (innerRadius / float(outerRadius)) + 2 * M_PI * progress);
 
-    sprite.fillTriangle(x0, y0, x1, y1, x2, y2, TFT_RED);
-    sprite.fillTriangle(x1, y1, x2, y2, x3, y3, TFT_RED);
+    sprite.fillTriangle(x0, y0, x1, y1, x2, y2, TFT_BLACK);
+    sprite.fillTriangle(x1, y1, x2, y2, x3, y3, TFT_BLACK);
 
-    sprite.drawWideLine(x0 - 0.5f, y0 - 0.5f, x1 - 0.5f, y1 - 0.5f, 1, color);
-    sprite.drawWideLine(x2 - 0.5f, y2 - 0.5f, x3 - 0.5f, y3 - 0.5f, 1, color);
-    sprite.drawWideLine(x3 - 0.5f, y3 - 0.5f, x1 - 0.5f, y1 - 0.5f, 1, color);
+    sprite.drawWideLine(x0, y0, x1, y1, 1, color);
+    sprite.drawWideLine(x2, y2, x3, y3, 1, color);
+    sprite.drawWideLine(x3, y3, x1, y1, 1, color);
   }
 }
 
@@ -417,7 +417,7 @@ void drawIcon(uint8_t icon, int16_t x, int16_t y)
     drawPlanet(x, y);
     break;
   case SETTINGS:
-    drawGear(x, y, 40, 30, 7, TFT_WHITE);
+    drawGear(x, y, 20, 15, 7, TFT_WHITE);
     break;
 
   default:
