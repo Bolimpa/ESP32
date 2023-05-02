@@ -126,7 +126,6 @@ OneButton btn_right(PIN_BTN_R, true);
 void drawIcon(uint8_t icon, int16_t x, int16_t y);
 void titleText(String title, int16_t x, int16_t boxWidth);
 Point pointOnRotatedEllipse(float a, float b, float t, float r);
-void drawPlanet(int16_t x, int16_t y);
 void drawGraph(int16_t xOffset, int16_t yOffset);
 bool loading();
 uint8_t scanNetworks();
@@ -385,7 +384,7 @@ void drawGear(int32_t centerX, int32_t centerY, int32_t outerRadius, int32_t inn
 
   sprite.fillCircle(centerX, centerY, innerRadius - 1, TFT_BLACK);
 
-  sprite.drawSmoothRoundRect(centerX - innerRadius * 0.5+1, centerY - innerRadius * 0.5+1, innerRadius * 0.5, innerRadius * 0.5, 0, 0, TFT_WHITE, TFT_BLACK);
+  sprite.drawSmoothRoundRect(centerX - innerRadius * 0.5 + 1, centerY - innerRadius * 0.5 + 1, innerRadius * 0.5, innerRadius * 0.5, 0, 0, TFT_WHITE, TFT_BLACK);
 
   for (int32_t i = 0; i < numTeeth; i++)
   {
@@ -406,23 +405,6 @@ void drawGear(int32_t centerX, int32_t centerY, int32_t outerRadius, int32_t inn
     sprite.drawWideLine(x0, y0, x1, y1, 1, color);
     sprite.drawWideLine(x2, y2, x3, y3, 1, color);
     sprite.drawWideLine(x3, y3, x1, y1, 1, color);
-  }
-}
-
-void drawIcon(uint8_t icon, int16_t x, int16_t y)
-{
-  switch (icon)
-  {
-  case PLANET:
-    drawPlanet(x, y);
-    break;
-  case SETTINGS:
-    drawGear(x, y, 20, 15, 7, TFT_WHITE);
-    break;
-
-  default:
-    drawPlanet(x, y);
-    break;
   }
 }
 
@@ -466,6 +448,33 @@ void drawPlanet(int16_t x, int16_t y)
 
     sprite.drawSpot(lerp(point[uint8_t(progress * planetPoints)].x, point[(uint8_t(progress * planetPoints) + 1) % planetPoints].x, fmod(progress * planetPoints, 1)) + x, lerp(point[uint8_t(progress * planetPoints)].y, point[(uint8_t(progress * planetPoints) + 1) % planetPoints].y, fmod(progress * planetPoints, 1)) + y, planetRadius * 0.25 + 1, TFT_WHITE);
     sprite.drawSpot(lerp(point[uint8_t(progress * planetPoints)].x, point[(uint8_t(progress * planetPoints) + 1) % planetPoints].x, fmod(progress * planetPoints, 1)) + x, lerp(point[uint8_t(progress * planetPoints)].y, point[(uint8_t(progress * planetPoints) + 1) % planetPoints].y, fmod(progress * planetPoints, 1)) + y, planetRadius * 0.25, TFT_BLACK);
+  }
+}
+
+void drawIcon(uint8_t icon, int16_t x, int16_t y)
+{
+  switch (icon)
+  {
+  case PLANET:
+    drawPlanet(x, y);
+    break;
+  case SETTINGS:
+    if ((((1.0f - progress) > 0.3) && ((1.0f - progress) < 0.8)))
+    {
+      drawGear(1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].x, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].x, fmod((1.0f - progress) * planetPoints, 1)) + x, 1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].y, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].y, fmod((1.0f - progress) * planetPoints, 1)) + y, 10, 7, 7, TFT_WHITE);
+      //sprite.drawSpot(1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].x, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].x, fmod((1.0f - progress) * planetPoints, 1)) + x, 1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].y, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].y, fmod((1.0f - progress) * planetPoints, 1)) + y, planetRadius * 0.1, TFT_WHITE);
+    }
+    drawGear(x, y, 20, 15, 7, TFT_WHITE);
+    if (!(((1.0f - progress) > 0.3) && ((1.0f - progress) < 0.8)))
+    {
+      drawGear(1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].x, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].x, fmod((1.0f - progress) * planetPoints, 1)) + x, 1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].y, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].y, fmod((1.0f - progress) * planetPoints, 1)) + y, 10, 7, 7, TFT_WHITE);
+      //sprite.drawSpot(1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].x, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].x, fmod((1.0f - progress) * planetPoints, 1)) + x, 1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].y, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].y, fmod((1.0f - progress) * planetPoints, 1)) + y, planetRadius * 0.1, TFT_WHITE);
+    }
+    break;
+
+  default:
+    drawPlanet(x, y);
+    break;
   }
 }
 
