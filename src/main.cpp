@@ -6,6 +6,10 @@
 #include "OneButton.h"
 #include "Interpolator.h"
 #include "IBMPlexMonoBold10.h"
+#include "IBMPlexMonoMedium16.h"
+
+#define Bold10 IBMPlexMonoBold10
+#define Medium16 IBMPlexMonoMedium16
 
 using namespace Interpolator;
 
@@ -109,7 +113,7 @@ void rightClick();
 void leftClick();
 
 float progress = 0;
-float progressSpeed = 1.0f / 100.0f;
+float progressSpeed = 1.0f / 200.0f;
 
 #define WIFI_SSID "Lyra"
 #define WIFI_PASSWORD "Philips123"
@@ -201,7 +205,7 @@ void setup()
   sprite.createSprite(128, 128); // Create a sprite 128 x 128 pixels
 
   sprite.fillSprite(TFT_BLACK);
-  sprite.loadFont(IBMPlexMonoBold10);
+  sprite.loadFont(Medium16);
   sprite.pushSprite(0, 0);
 
   for (int i = 0; i < iconCount; i++)
@@ -375,37 +379,44 @@ uint8_t graphCurrentPositionY[10];
 uint8_t graphTargetY[10];
 float graphY[10];
 
-void drawGear(int32_t centerX, int32_t centerY, int32_t outerRadius, int32_t innerRadius, int32_t numTeeth, uint32_t color)
+void drawGear(int32_t centerX, int32_t centerY, int32_t outerRadius, int32_t innerRadius, int32_t centerRadius, int32_t numTeeth, float rotation, uint32_t color)
 {
   centerX += 64;
   centerY += 64;
 
   const float toothAngle = 2 * M_PI / numTeeth;
+  const float toothAngleDegrees = 360.0f / numTeeth;
 
-  sprite.fillCircle(centerX, centerY, innerRadius - 1, TFT_BLACK);
+  sprite.fillCircle(centerX, centerY, innerRadius + 2, TFT_BLACK);
 
-  sprite.drawSmoothRoundRect(centerX - innerRadius * 0.5 + 1, centerY - innerRadius * 0.5 + 1, innerRadius * 0.5, innerRadius * 0.5, 0, 0, TFT_WHITE, TFT_BLACK);
+  sprite.drawSmoothRoundRect(centerX - innerRadius, centerY - innerRadius, innerRadius, innerRadius, 0, 0, TFT_WHITE, TFT_BLACK);
 
+  int16_t arcStartAngle = int16_t((1) / (numTeeth)*360.0f + (toothAngleDegrees / 6.0f) + 360 * rotation) % 360;
+  int16_t arcEndAngle = int16_t(((1) / (numTeeth)) * 360.0f - (toothAngleDegrees / 6.0f) + 360 * rotation) % 360;
+  // sprite.drawSmoothArc(centerX, centerY, innerRadius, innerRadius, arcStartAngle, arcEndAngle, TFT_WHITE, false);
   for (int32_t i = 0; i < numTeeth; i++)
   {
-    sprite.drawSmoothArc(centerX, centerY, innerRadius, innerRadius, int32_t((i * 2.0f) / (numTeeth * 2.0f) * 360.0f + 29 + 360 * progress) % 360, int32_t(((i * 2.0f + 1.0f) / (numTeeth * 2.0f)) * 360.0f + 23.0f + 360 * progress) % 360, TFT_WHITE, false);
-    float x0 = centerX + innerRadius * cos(toothAngle * i + toothAngle / 3 + 2 * M_PI * progress);
-    float y0 = centerY + innerRadius * sin(toothAngle * i + toothAngle / 3 + 2 * M_PI * progress);
-    float x1 = centerX + outerRadius * cos(toothAngle * i + toothAngle / 3 * (innerRadius / float(outerRadius)) + 2 * M_PI * progress);
-    float y1 = centerY + outerRadius * sin(toothAngle * i + toothAngle / 3 * (innerRadius / float(outerRadius)) + 2 * M_PI * progress);
 
-    float x2 = centerX + innerRadius * cos(toothAngle * i - toothAngle / 3 + 2 * M_PI * progress);
-    float y2 = centerY + innerRadius * sin(toothAngle * i - toothAngle / 3 + 2 * M_PI * progress);
-    float x3 = centerX + outerRadius * cos(toothAngle * i - toothAngle / 3 * (innerRadius / float(outerRadius)) + 2 * M_PI * progress);
-    float y3 = centerY + outerRadius * sin(toothAngle * i - toothAngle / 3 * (innerRadius / float(outerRadius)) + 2 * M_PI * progress);
+    // sprite.drawSmoothArc(centerX, centerY, innerRadius, innerRadius, int32_t((i * 2.0f) / (numTeeth * 2.0f) * 360.0f - 720 / numTeeth + 360 * rotation) % 360, int32_t(((i * 2.0f + 1.0f) / (numTeeth * 2.0f)) * 360.0f + 720 / numTeeth + 5 + 360 * rotation) % 360, TFT_WHITE, false);
 
-    sprite.fillTriangle(x0, y0, x1, y1, x2, y2, TFT_BLACK);
-    sprite.fillTriangle(x1, y1, x2, y2, x3, y3, TFT_BLACK);
+    float x0 = innerRadius * cos(toothAngle * i + toothAngle / 3 + 2 * M_PI * rotation);
+    float y0 = innerRadius * sin(toothAngle * i + toothAngle / 3 + 2 * M_PI * rotation);
+    float x1 = outerRadius * cos(toothAngle * i + toothAngle / 3 * (innerRadius / float(outerRadius)) + 2 * M_PI * rotation);
+    float y1 = outerRadius * sin(toothAngle * i + toothAngle / 3 * (innerRadius / float(outerRadius)) + 2 * M_PI * rotation);
 
-    sprite.drawWideLine(x0, y0, x1, y1, 1, color);
-    sprite.drawWideLine(x2, y2, x3, y3, 1, color);
-    sprite.drawWideLine(x3, y3, x1, y1, 1, color);
+    float x2 = innerRadius * cos(toothAngle * i - toothAngle / 3 + 2 * M_PI * rotation);
+    float y2 = innerRadius * sin(toothAngle * i - toothAngle / 3 + 2 * M_PI * rotation);
+    float x3 = outerRadius * cos(toothAngle * i - toothAngle / 3 * (innerRadius / float(outerRadius)) + 2 * M_PI * rotation);
+    float y3 = outerRadius * sin(toothAngle * i - toothAngle / 3 * (innerRadius / float(outerRadius)) + 2 * M_PI * rotation);
+
+    sprite.fillTriangle(x0 * 0.8 + centerX, y0 * 0.8 + centerY, x1 + centerX, y1 + centerY, x2 + centerX, y2 + centerY, TFT_BLACK);
+    sprite.fillTriangle(x1 + centerX, y1 + centerY, x2 * 0.8 + centerX, y2 * 0.8 + centerY, x3 + centerX, y3 + centerY, TFT_BLACK);
+
+    sprite.drawWideLine(x0 + centerX, y0 + centerY, x1 + centerX, y1 + centerY, 1, color);
+    sprite.drawWideLine(x2 + centerX, y2 + centerY, x3 + centerX, y3 + centerY, 1, color);
+    sprite.drawWideLine(x3 + centerX, y3 + centerY, x1 + centerX, y1 + centerY, 1, color);
   }
+  sprite.drawSmoothRoundRect(centerX - centerRadius, centerY - centerRadius, centerRadius, centerRadius, 0, 0, TFT_WHITE, TFT_BLACK);
 }
 
 void drawPlanet(int16_t x, int16_t y)
@@ -461,14 +472,14 @@ void drawIcon(uint8_t icon, int16_t x, int16_t y)
   case SETTINGS:
     if ((((1.0f - progress) > 0.3) && ((1.0f - progress) < 0.8)))
     {
-      drawGear(1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].x, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].x, fmod((1.0f - progress) * planetPoints, 1)) + x, 1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].y, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].y, fmod((1.0f - progress) * planetPoints, 1)) + y, 10, 7, 7, TFT_WHITE);
-      //sprite.drawSpot(1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].x, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].x, fmod((1.0f - progress) * planetPoints, 1)) + x, 1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].y, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].y, fmod((1.0f - progress) * planetPoints, 1)) + y, planetRadius * 0.1, TFT_WHITE);
+      drawGear(1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].x, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].x, fmod((1.0f - progress) * planetPoints, 1)) + x, 1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].y, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].y, fmod((1.0f - progress) * planetPoints, 1)) + y, 10, 7, 3, 5, -2 * progress, TFT_WHITE);
+      sprite.drawSpot(1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].x, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].x, fmod((1.0f - progress) * planetPoints, 1)) + x, 1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].y, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].y, fmod((1.0f - progress) * planetPoints, 1)) + y, planetRadius * 0.1, TFT_WHITE);
     }
-    drawGear(x, y, 20, 15, 7, TFT_WHITE);
+    drawGear(x, y, 30, 25, 17, 9, progress, TFT_WHITE);
     if (!(((1.0f - progress) > 0.3) && ((1.0f - progress) < 0.8)))
     {
-      drawGear(1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].x, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].x, fmod((1.0f - progress) * planetPoints, 1)) + x, 1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].y, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].y, fmod((1.0f - progress) * planetPoints, 1)) + y, 10, 7, 7, TFT_WHITE);
-      //sprite.drawSpot(1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].x, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].x, fmod((1.0f - progress) * planetPoints, 1)) + x, 1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].y, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].y, fmod((1.0f - progress) * planetPoints, 1)) + y, planetRadius * 0.1, TFT_WHITE);
+      drawGear(1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].x, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].x, fmod((1.0f - progress) * planetPoints, 1)) + x, 1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].y, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].y, fmod((1.0f - progress) * planetPoints, 1)) + y, 10, 7,3, 5 , -2 * progress, TFT_WHITE);
+      sprite.drawSpot(1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].x, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].x, fmod((1.0f - progress) * planetPoints, 1)) + x, 1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].y, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].y, fmod((1.0f - progress) * planetPoints, 1)) + y, planetRadius * 0.1, TFT_WHITE);
     }
     break;
 
@@ -564,17 +575,6 @@ lerpRGB565(uint32_t c, uint32_t d, float t)
 
 bool loading()
 {
-
-  // sprite.fillScreen(TFT_BLACK);
-  // sprite.fillRectHGradient(-20 + 148 * lerpSmoothstep(0, 1, fmod(progress + 0.5f, 1)), 119, 10, 9, 0x0000, 0xC8F9);
-  // sprite.fillRectHGradient(-10 + 148 * lerpSmoothstep(0, 1, fmod(progress + 0.5f, 1)), 119, 10, 9, 0xC8F9, 0x0000);
-
-  // sprite.drawSpot(lerp(8, 120, Elastic::out(constrain(progress * 1, 0, 1))), 64 + 8, 7, TFT_WHITE);
-
-  // sprite.fillRectHGradient(-20 + 148 * lerpSmoothstep(0, 1, progress), 119, 10, 9, 0x0000, 0x1E69);
-  // sprite.fillRectHGradient(-10 + 148 * lerpSmoothstep(0, 1, progress), 119, 10, 9, 0x1E69, 0x0000);
-
-  sprite.fillRect(0, 119, 11, 128, TFT_BLACK);
   sprite.drawSmoothArc(4, 123, 4, 3, uint16_t(lerp(0, 359, Ease::inOut(constrain((progress - 0.375) * 1.6, 0, 1))) + lerp(0, 359, Ease::inOut(progress)) + 170) % 360, uint16_t(lerp(0, 359, Ease::inOut(constrain(progress * 2, 0, 1))) + lerp(0, 359, Ease::inOut(progress)) + 175) % 360, TFT_WHITE, TFT_BLACK);
   return (progress == 0);
 }
@@ -594,9 +594,9 @@ Point pointOnRotatedEllipse(float a, float b, float t, float rotation)
 
 void titleText(String title, int16_t x, int16_t boxWidth)
 {
-  sprite.fillSmoothRoundRect(64 - boxWidth / 2 - 2 + x, 119, boxWidth + 4, 9, 3, TFT_WHITE);
+  sprite.fillSmoothRoundRect(64 - boxWidth / 2 - 1 + x, 128 - 13, boxWidth + 2, 13, 3, TFT_WHITE);
   sprite.setTextColor(TFT_BLACK);
-  sprite.drawCentreString(title, 64 + x, 120, 8);
+  sprite.drawCentreString(title, 64 + x, 128 - 13, 8);
   sprite.setTextColor(TFT_WHITE);
 }
 
