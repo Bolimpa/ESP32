@@ -2,7 +2,9 @@
     "files.associations": {
         "random": "cpp",
         "cmath": "cpp",
-        "ibm": "c"
+        "ibm": "c",
+        "new": "cpp",
+        "*.tcc": "cpp"
     },
     "cSpell.words": [
         "perlin",

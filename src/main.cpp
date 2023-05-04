@@ -6,10 +6,14 @@
 #include "OneButton.h"
 #include "Interpolator.h"
 #include "IBMPlexMonoBold10.h"
-#include "IBMPlexMonoMedium16.h"
+#include "IBMPlexMonoMedium12.h"
+
+#include "BleKeyboard.h"
+
+BleKeyboard bleKeyboard;
 
 #define Bold10 IBMPlexMonoBold10
-#define Medium16 IBMPlexMonoMedium16
+#define Medium12 IBMPlexMonoMedium12
 
 using namespace Interpolator;
 
@@ -22,7 +26,7 @@ using namespace Interpolator;
 //
 // Define a macro to generate the enum and the array
 #define ICON_LIST(X) \
-  X(PLANET)          \
+  X(MEDIACONTROL)    \
   X(WIFI)            \
   X(SETTINGS)        \
   X(INFO)            \
@@ -181,7 +185,10 @@ Particle starParticles[50];
 
 void setup()
 {
-  // Precalculations:
+  //btn_left.setPressTicks(100);
+  //btn_right.setPressTicks(100);
+  bleKeyboard.setName("Amognis");
+  bleKeyboard.begin();
 
   for (int i = 0; i < planetPoints; i++)
   {
@@ -205,7 +212,7 @@ void setup()
   sprite.createSprite(128, 128); // Create a sprite 128 x 128 pixels
 
   sprite.fillSprite(TFT_BLACK);
-  sprite.loadFont(Medium16);
+  sprite.loadFont(Medium12);
   sprite.pushSprite(0, 0);
 
   for (int i = 0; i < iconCount; i++)
@@ -228,9 +235,6 @@ void setup()
   sprite.pushSprite(0, 0);
   */
   // put your main code here, to run repeatedly:
-
-  btn_right.attachClick(rightClick);
-  btn_left.attachClick(leftClick);
 }
 
 bool isMenu = true;
@@ -250,6 +254,29 @@ float planetTargetY = 0;
 float planetSpeedX = 0;
 float planetSpeedY = 0;
 
+bool isNewIcon = true;
+
+void voidFunction()
+{
+}
+
+void MEDIACONTROL_RightClick()
+{
+  bleKeyboard.write(KEY_MEDIA_PLAY_PAUSE);
+}
+void MEDIACONTROL_RightDoubleClick()
+{
+  bleKeyboard.write(KEY_MEDIA_NEXT_TRACK);
+}
+void MEDIACONTROL_LeftClick()
+{
+  bleKeyboard.write(KEY_MEDIA_PLAY_PAUSE);
+}
+void MEDIACONTROL_LeftDoubleClick()
+{
+  bleKeyboard.write(KEY_MEDIA_PREVIOUS_TRACK);
+}
+
 void loop()
 {
   btn_left.tick();
@@ -264,6 +291,7 @@ void loop()
       {
         currentIconIndex++;
         iconTargetX -= 128;
+        // bleKeyboard.write(KEY_MEDIA_PLAY_PAUSE);
       }
       if (leftClicked)
       {
@@ -273,15 +301,42 @@ void loop()
           iconTargetX += 128;
         }
       }
-
       resetButtonStates();
     }
   }
   if (rightClicked && leftClicked)
   {
+    isNewIcon = true;
     isMenu = !isMenu;
     tft.fillScreen(TFT_BLACK);
     resetButtonStates();
+  }
+  if (isNewIcon)
+  {
+    if (!isMenu)
+    {
+      switch (currentIconIndex)
+      {
+      case MEDIACONTROL:
+        btn_right.attachClick(MEDIACONTROL_RightClick);
+        btn_right.attachDoubleClick(MEDIACONTROL_RightDoubleClick);
+        btn_left.attachClick(MEDIACONTROL_LeftClick);
+        btn_left.attachDoubleClick(MEDIACONTROL_LeftDoubleClick);
+        break;
+
+      default:
+
+        break;
+      }
+    }
+    else
+    {
+      btn_left.reset();
+      btn_right.attachClick(rightClick);
+      btn_left.attachClick(leftClick);
+    }
+
+    isNewIcon = false;
   }
   /*
   if (millis() - last_time_display > 5000)
@@ -358,7 +413,7 @@ void loop()
       {
         drawIcon(currentIconIndex + 1, (currentIconIndex + 1) * 128 + planetCurrentPositionX + iconCurrentPositionX, planetCurrentPositionY);
 
-        titleText(icons[currentIconIndex + 1].c_str(), (currentIconIndex + 1) * 128 + iconCurrentPositionX, iconTextSize[currentIconIndex]);
+        titleText(icons[currentIconIndex + 1].c_str(), (currentIconIndex + 1) * 128 + iconCurrentPositionX, iconTextSize[currentIconIndex + 1]);
       }
 
       loading();
@@ -378,6 +433,10 @@ uint32_t graph_time = millis();
 uint8_t graphCurrentPositionY[10];
 uint8_t graphTargetY[10];
 float graphY[10];
+
+void drawMediaControl(int16_t x, int16_t y)
+{
+}
 
 void drawGear(int32_t centerX, int32_t centerY, int32_t outerRadius, int32_t innerRadius, int32_t centerRadius, int32_t numTeeth, float rotation, uint32_t color)
 {
@@ -466,8 +525,8 @@ void drawIcon(uint8_t icon, int16_t x, int16_t y)
 {
   switch (icon)
   {
-  case PLANET:
-    drawPlanet(x, y);
+  case MEDIACONTROL:
+    drawMediaControl(x, y);
     break;
   case SETTINGS:
     if ((((1.0f - progress) > 0.3) && ((1.0f - progress) < 0.8)))
@@ -478,7 +537,7 @@ void drawIcon(uint8_t icon, int16_t x, int16_t y)
     drawGear(x, y, 30, 25, 17, 9, progress, TFT_WHITE);
     if (!(((1.0f - progress) > 0.3) && ((1.0f - progress) < 0.8)))
     {
-      drawGear(1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].x, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].x, fmod((1.0f - progress) * planetPoints, 1)) + x, 1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].y, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].y, fmod((1.0f - progress) * planetPoints, 1)) + y, 10, 7,3, 5 , -2 * progress, TFT_WHITE);
+      drawGear(1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].x, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].x, fmod((1.0f - progress) * planetPoints, 1)) + x, 1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].y, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].y, fmod((1.0f - progress) * planetPoints, 1)) + y, 10, 7, 3, 5, -2 * progress, TFT_WHITE);
       sprite.drawSpot(1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].x, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].x, fmod((1.0f - progress) * planetPoints, 1)) + x, 1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].y, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].y, fmod((1.0f - progress) * planetPoints, 1)) + y, planetRadius * 0.1, TFT_WHITE);
     }
     break;
@@ -594,10 +653,10 @@ Point pointOnRotatedEllipse(float a, float b, float t, float rotation)
 
 void titleText(String title, int16_t x, int16_t boxWidth)
 {
-  sprite.fillSmoothRoundRect(64 - boxWidth / 2 - 1 + x, 128 - 13, boxWidth + 2, 13, 3, TFT_WHITE);
-  sprite.setTextColor(TFT_BLACK);
-  sprite.drawCentreString(title, 64 + x, 128 - 13, 8);
-  sprite.setTextColor(TFT_WHITE);
+  // sprite.drawSmoothRoundRect(64 - boxWidth / 2 - 5 + x, 128 - 14,6,6, boxWidth + 10, 13, TFT_WHITE,TFT_BLACK);
+  // sprite.setTextColor(TFT_BLACK);
+  sprite.drawString(title, 64 - boxWidth / 2 + x, 128 - 12);
+  // sprite.setTextColor(TFT_WHITE);
 }
 
 void rightClick()
