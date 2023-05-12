@@ -147,7 +147,7 @@ class TFT_eSprite : public TFT_eSPI {
   void     printToSprite(char *cbuffer, uint16_t len);
            // Print indexed glyph to sprite using loaded font at x,y
   int16_t  printToSprite(int16_t x, int16_t y, uint16_t index);
-
+uint16_t *_img;    // pointer to 16 bit sprite
  private:
 
   TFT_eSPI *_tft;
@@ -162,7 +162,7 @@ class TFT_eSprite : public TFT_eSPI {
  protected:
 
   uint8_t  _bpp;     // bits per pixel (1, 4, 8 or 16)
-  uint16_t *_img;    // pointer to 16 bit sprite
+  
   uint8_t  *_img8;   // pointer to  1 and 8 bit sprite frame 1 or frame 2
   uint8_t  *_img4;   // pointer to  4 bit sprite (uses color map)
   uint8_t  *_img8_1; // pointer to frame 1

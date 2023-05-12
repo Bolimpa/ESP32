@@ -1,5 +1,4 @@
 #include <Arduino.h>
-#include "WiFiMulti.h"
 #include <TFT_eSPI.h> // Hardware-specific library
 #include <SPI.h>
 #include "PerlinNoise.h"
@@ -74,21 +73,6 @@ uint8_t currentIconIndex = 0;
 //
 // ICONS
 
-struct RGB24
-{
-  uint8_t R;
-  uint8_t G;
-  uint8_t B;
-
-  // Constructor to initialize the RGB values
-  RGB24(uint8_t r, uint8_t g, uint8_t b)
-  {
-    R = r;
-    G = g;
-    B = b;
-  }
-};
-
 struct Particle
 {
   float x;
@@ -116,16 +100,11 @@ void updateFirstButtonClickTime();
 void rightClick();
 void leftClick();
 
-float progress = 0;
-float progressSpeed = 1.0f / 200.0f;
-
-#define WIFI_SSID "Lyra"
-#define WIFI_PASSWORD "Philips123"
+float progress = 0.0;
 
 #define PIN_BTN_L 0
 #define PIN_BTN_R 47
 
-WiFiMulti wifiMulti;
 PerlinNoise perlin(43);
 
 OneButton btn_left(PIN_BTN_L, true);
@@ -141,6 +120,148 @@ uint16_t lerpRGB565(uint32_t c, uint32_t d, float t);
 
 TFT_eSPI tft = TFT_eSPI();              // Invoke library, pins defined in User_Setup.h
 TFT_eSprite sprite = TFT_eSprite(&tft); // Sprite object "spr" with pointer to "tft" object
+
+void boxBlurH_4(uint8_t *scl, uint8_t *tcl, int w, int h, int r)
+{
+  float iarr = 1.0 / (r + r + 1);
+  for (int i = 0; i < h; i++)
+  {
+    int ti = i * w, li = ti, ri = ti + r;
+    uint8_t fv = scl[ti], lv = scl[ti + w - 1];
+    float val = (r + 1) * fv;
+    for (int j = 0; j < r; j++)
+      val += scl[ti + j];
+    for (int j = 0; j <= r; j++)
+    {
+      val += scl[ri++] - fv;
+      tcl[ti++] = round(val * iarr);
+    }
+    for (int j = r + 1; j < w - r; j++)
+    {
+      val += scl[ri++] - scl[li++];
+      tcl[ti++] = round(val * iarr);
+    }
+    for (int j = w - r; j < w; j++)
+    {
+      val += lv - scl[li++];
+      tcl[ti++] = round(val * iarr);
+    }
+  }
+}
+
+void boxBlurT_4(uint8_t *scl, uint8_t *tcl, int w, int h, int r)
+{
+  float iarr = 1.0 / (r + r + 1);
+  for (int i = 0; i < w; i++)
+  {
+    int ti = i, li = ti, ri = ti + r * w;
+    uint8_t fv = scl[ti], lv = scl[ti + w * (h - 1)];
+    float val = (r + 1) * fv;
+    for (int j = 0; j < r; j++)
+      val += scl[ti + j * w];
+    for (int j = 0; j <= r; j++)
+    {
+      val += scl[ri] - fv;
+      tcl[ti] = round(val * iarr);
+      ri += w;
+      ti += w;
+    }
+    for (int j = r + 1; j < h - r; j++)
+    {
+      val += scl[ri] - scl[li];
+      tcl[ti] = round(val * iarr);
+      li += w;
+      ri += w;
+      ti += w;
+    }
+    for (int j = h - r; j < h; j++)
+    {
+      val += lv - scl[li];
+      tcl[ti] = round(val * iarr);
+      li += w;
+      ti += w;
+    }
+  }
+}
+
+void boxBlur_4(uint8_t *scl, uint8_t *tcl, int w, int h, int r)
+{
+  for (int i = 0; i < w * h; i++)
+    tcl[i] = scl[i];
+  boxBlurH_4(tcl, scl, w, h, r);
+  boxBlurT_4(scl, tcl, w, h, r);
+}
+
+void boxesForGauss(float sigma, int n, int *sizes)
+{
+  float wIdeal = sqrt((12 * sigma * sigma / n) + 1);
+  int wl = floor(wIdeal);
+  if (wl % 2 == 0)
+    wl--;
+  int wu = wl + 2;
+
+  float mIdeal = (12 * sigma * sigma - n * wl * wl - 4 * n * wl - 3 * n) / (-4 * wl - 4);
+  int m = round(mIdeal);
+
+  for (int i = 0; i < n; i++)
+    sizes[i] = i < m ? wl : wu;
+}
+
+void gaussBlur_4(uint8_t *scl, uint8_t *tcl, int w, int h, float sigma)
+{
+  int bxs[3];
+  boxesForGauss(sigma, 3, bxs);
+
+  boxBlur_4(scl, tcl, w, h, (bxs[0] - 1) / 2);
+  boxBlur_4(tcl, scl, w, h, (bxs[1] - 1) / 2);
+  boxBlur_4(scl, tcl, w, h, (bxs[2] - 1) / 2);
+}
+
+void applyGaussianBlurToSprite(TFT_eSprite &sprite, float sigma)
+{
+  int16_t w = sprite.width();
+  int16_t h = sprite.height();
+
+  uint8_t *srcBufferR = new uint8_t[w * h];
+  uint8_t *srcBufferG = new uint8_t[w * h];
+  uint8_t *srcBufferB = new uint8_t[w * h];
+  uint8_t *dstBufferR = new uint8_t[w * h];
+  uint8_t *dstBufferG = new uint8_t[w * h];
+  uint8_t *dstBufferB = new uint8_t[w * h];
+
+  for (int16_t y = 0; y < h; y++)
+  {
+    for (int16_t x = 0; x < w; x++)
+    {
+      uint16_t pixel = sprite.readPixel(x, y);
+      srcBufferR[y * w + x] = ((pixel >> 11) & 0x1F) * 255 / 31;
+      srcBufferG[y * w + x] = ((pixel >> 5) & 0x3F) * 255 / 63;
+      srcBufferB[y * w + x] = (pixel & 0x1F) * 255 / 31;
+    }
+  }
+
+  gaussBlur_4(srcBufferR, dstBufferR, w, h, sigma);
+  gaussBlur_4(srcBufferG, dstBufferG, w, h, sigma);
+  gaussBlur_4(srcBufferB, dstBufferB, w, h, sigma);
+
+  for (int16_t y = 0; y < h; y++)
+  {
+    for (int16_t x = 0; x < w; x++)
+    {
+      uint8_t r = dstBufferR[y * w + x] * 31 / 255;
+      uint8_t g = dstBufferG[y * w + x] * 63 / 255;
+      uint8_t b = dstBufferB[y * w + x] * 31 / 255;
+      sprite.drawPixel(x, y, ((r & 0x1F) << 11) | ((g & 0x3F) << 5) | (b & 0x1F));
+    }
+  }
+
+  delete[] srcBufferR;
+  delete[] srcBufferG;
+  delete[] srcBufferB;
+  delete[] dstBufferR;
+  delete[] dstBufferG;
+  delete[] dstBufferB;
+}
 
 unsigned long drawTime = 0;
 
@@ -185,8 +306,9 @@ Particle starParticles[50];
 
 void setup()
 {
-  //btn_left.setPressTicks(100);
-  //btn_right.setPressTicks(100);
+
+  // btn_left.setPressTicks(100);
+  // btn_right.setPressTicks(100);
   bleKeyboard.setName("Amognis");
   bleKeyboard.begin();
 
@@ -219,22 +341,6 @@ void setup()
   {
     iconTextSize[i] = sprite.drawCentreString(icons[i].c_str(), 64, 120, 8);
   }
-
-  /*
-  wifiMulti.addAP(WIFI_SSID, WIFI_PASSWORD);
-
-  sprite.setCursor(13, 120);
-  sprite.print("Scanning");
-  while (wifiMulti.run() != WL_CONNECTED)
-  {
-    loading();
-  }
-  sprite.fillRect(13, 120, 128, 128, TFT_BLACK);
-  sprite.setCursor(13, 120);
-  sprite.print(WIFI_SSID);
-  sprite.pushSprite(0, 0);
-  */
-  // put your main code here, to run repeatedly:
 }
 
 bool isMenu = true;
@@ -277,6 +383,8 @@ void MEDIACONTROL_LeftDoubleClick()
   bleKeyboard.write(KEY_MEDIA_PREVIOUS_TRACK);
 }
 
+unsigned long previousMillis = 0;
+
 void loop()
 {
   btn_left.tick();
@@ -307,7 +415,7 @@ void loop()
   if (rightClicked && leftClicked)
   {
     isNewIcon = true;
-    isMenu = !isMenu;
+    isMenu = false;
     tft.fillScreen(TFT_BLACK);
     resetButtonStates();
   }
@@ -351,17 +459,12 @@ void loop()
     planetTargetY = random(-4, 4);
     target_time = millis();
   }
-
   if (millis() - loading_time > 16)
   {
     timer.startTime();
     sprite.fillScreen(TFT_BLACK);
-
-    progress += progressSpeed;
-    if (progress > 1.0f - progressSpeed)
-    {
-      progress = 0;
-    }
+  
+    progress = (millis() % 4000) / 4000.0f;
 
     if (isMenu)
     {
@@ -421,12 +524,17 @@ void loop()
     else
     {
     }
-    timer.displayTime();
 
+    //applyGaussianBlurToSprite(sprite, 2);
+    timer.displayTime();
+    sprite.setCursor(0, 20);
+    sprite.print(millis());
+    // memcpy(spriteBuffer2,sprite._img,  128 * 128 * 2);
     sprite.pushSprite(0, 0);
 
     loading_time = millis();
   }
+  
 }
 
 uint32_t graph_time = millis();
@@ -573,7 +681,7 @@ void drawGraph(int16_t xOffset, int16_t yOffset)
 
 uint8_t scanNetworks()
 {
-  int n = WiFi.scanNetworks();
+  int n;// = WiFi.scanNetworks();
 
   if (n == 0)
   {
@@ -590,7 +698,7 @@ uint8_t scanNetworks()
     sprite.setCursor(0, 0);
     for (int i = 0; i < n; ++i)
     {
-      sprite.println(WiFi.SSID(i));
+      //sprite.println(WiFi.SSID(i));
     }
   }
   return n;

@@ -1,51 +1,31 @@
-#include "OneButton.h"
-OneButton btn_right(47, true);
-OneButton btn_left(0, true);
-unsigned long firstButtonClickTime = 0;
-const unsigned long timeThreshold = 500;
-bool rightClicked = false;
-bool leftClicked = false;
+#include <TFT_eSPI.h> // Hardware-specific library
+TFT_eSPI tft = TFT_eSPI(); 
+void testColorConversion()
+{
+  uint16_t color16 = tft.color565(100, 150, 200);
+  uint32_t color24 = tft.color16to24(color16);
+  uint8_t r = (color24 >> 16) & 0xFF;
+  uint8_t g = (color24 >> 8) & 0xFF;
+  uint8_t b = color24 & 0xFF;
+  uint16_t recoveredColor16 = tft.color565(r, g, b);
 
-void rightClick()
-{
-    rightClicked = true;
-    if (firstButtonClickTime == 0)
-    {
-        firstButtonClickTime = millis();
-    }
-}
-void leftClick()
-{
-    leftClicked = true;
-    if (firstButtonClickTime == 0)
-    {
-        firstButtonClickTime = millis();
-    }
-}
-void bothButtonsPressed()
-{
-    Serial.println("Both buttons pressed within 500ms");
+  Serial.print("Original 16-bit color: ");
+  Serial.println(color16, HEX);
+  Serial.print("Recovered 16-bit color: ");
+  Serial.println(recoveredColor16, HEX);
 }
 
 
 void setup()
 {
     Serial.begin(9600);
-    btn_right.attachClick(rightClick);
-    btn_left.attachClick(leftClick);
+      tft.init();
+  tft.setRotation(2); 
+ 
 }
 void loop()
 {
-    btn_right.tick();
-    btn_left.tick();
-    if (rightClicked && leftClicked)
-    {
-        if (millis() - firstButtonClickTime <= timeThreshold)
-        {
-            bothButtonsPressed();
-        }
-        rightClicked = false;
-        leftClicked = false;
-        firstButtonClickTime = 0;
-    }
+    delay(5000);
+  testColorConversion();
+    
 }
