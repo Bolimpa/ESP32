@@ -6,8 +6,18 @@
 #include "Interpolator.h"
 #include "IBMPlexMonoBold10.h"
 #include "IBMPlexMonoMedium12.h"
+#include "BLEDevice.h"
 
 #include "BleKeyboard.h"
+
+char str[20];
+
+const float VOLTAGE_DIVIDER_RATIO = 2.0;  // voltage divider ratio
+const float VOLTAGE_DIVIDER_OFFSET = 0.0; // voltage divider offset
+const float ADC_RESOLUTION = 4095.0;      // ADC resolution
+const float VOLTAGE_REFERENCE = 3.3;      // ADC voltage reference
+const float min_voltage = 3.0;            // minimum battery voltage
+const float max_voltage = 4.2;            // maximum battery voltage
 
 BleKeyboard bleKeyboard;
 
@@ -25,6 +35,7 @@ using namespace Interpolator;
 //
 // Define a macro to generate the enum and the array
 #define ICON_LIST(X) \
+  X(PRESENTATION)    \
   X(MEDIACONTROL)    \
   X(WIFI)            \
   X(SETTINGS)        \
@@ -109,6 +120,9 @@ PerlinNoise perlin(43);
 
 OneButton btn_left(PIN_BTN_L, true);
 OneButton btn_right(PIN_BTN_R, true);
+
+OneButton menu_left(PIN_BTN_L, true);
+OneButton menu_right(PIN_BTN_R, true);
 
 void drawIcon(uint8_t icon, int16_t x, int16_t y);
 void titleText(String title, int16_t x, int16_t boxWidth);
@@ -271,6 +285,8 @@ uint32_t target_time = millis();
 
 float noiseScale = 0.1;
 
+unsigned long sleepTimer = 0;
+
 uint32_t colors[] = {TFT_RED, TFT_BLUE, TFT_GREEN, TFT_YELLOW, TFT_WHITE};
 
 class Timer
@@ -306,11 +322,9 @@ Particle starParticles[50];
 
 void setup()
 {
-
+  pinMode(4, INPUT);
   // btn_left.setPressTicks(100);
   // btn_right.setPressTicks(100);
-  bleKeyboard.setName("Amognis");
-  bleKeyboard.begin();
 
   for (int i = 0; i < planetPoints; i++)
   {
@@ -341,6 +355,11 @@ void setup()
   {
     iconTextSize[i] = sprite.drawCentreString(icons[i].c_str(), 64, 120, 8);
   }
+
+  sleepTimer = millis();
+
+  menu_right.attachClick(rightClick);
+  menu_left.attachClick(leftClick);
 }
 
 bool isMenu = true;
@@ -366,6 +385,14 @@ void voidFunction()
 {
 }
 
+void MEDIACONTROL_RightHold()
+{
+  if (btn_left.isIdle())
+  {
+    bleKeyboard.write(KEY_MEDIA_MUTE);
+  }
+}
+
 void MEDIACONTROL_RightClick()
 {
   bleKeyboard.write(KEY_MEDIA_PLAY_PAUSE);
@@ -384,11 +411,49 @@ void MEDIACONTROL_LeftDoubleClick()
 }
 
 unsigned long previousMillis = 0;
+float menuAnimationProgress = 0;
+float menuAnimationSpeed = 1.0f / 100.0f;
+
+TaskHandle_t TurnOffBluetoothTask;
+TaskHandle_t TurnOnBluetoothTask;
+
+void TurnOffBluetooth(void *parameter)
+{
+  BLEDevice::deinit();
+  Serial.print("TurnOffBluetoothTask running on core ");
+  Serial.println(xPortGetCoreID());
+  vTaskDelete(TurnOffBluetoothTask);
+}
+
+void TurnOnBluetooth(void *parameter)
+{
+  BLEDevice::init("Amognis");
+  bleKeyboard.setName("Amognis");
+  bleKeyboard.begin();
+  Serial.print("TurnOnBluetoothTask running on core ");
+  Serial.println(xPortGetCoreID());
+  vTaskDelete(TurnOnBluetoothTask);
+}
 
 void loop()
 {
+  menu_left.tick();
+  menu_right.tick();
   btn_left.tick();
   btn_right.tick();
+  if (!btn_left.isIdle() || !btn_right.isIdle())
+  {
+    sleepTimer = millis();
+  }
+  else if (millis() - sleepTimer > 60000 && isMenu)
+  {
+    tft.writecommand(0x10);
+
+    esp_sleep_enable_ext1_wakeup(GPIO_SEL_0, ESP_EXT1_WAKEUP_ALL_LOW);
+
+    esp_deep_sleep_start();
+  }
+
   if (rightClicked || leftClicked)
   {
 
@@ -412,62 +477,89 @@ void loop()
       resetButtonStates();
     }
   }
-  if (rightClicked && leftClicked)
+
+  if (rightClicked && leftClicked && isMenu)
   {
+    Serial.println("Both Clicked");
     isNewIcon = true;
     isMenu = false;
     tft.fillScreen(TFT_BLACK);
     resetButtonStates();
   }
-  if (isNewIcon)
+  else if (menu_left.isLongPressed() && menu_right.isLongPressed() && !isMenu)
   {
-    if (!isMenu)
-    {
-      switch (currentIconIndex)
-      {
-      case MEDIACONTROL:
-        btn_right.attachClick(MEDIACONTROL_RightClick);
-        btn_right.attachDoubleClick(MEDIACONTROL_RightDoubleClick);
-        btn_left.attachClick(MEDIACONTROL_LeftClick);
-        btn_left.attachDoubleClick(MEDIACONTROL_LeftDoubleClick);
-        break;
+    isNewIcon = true;
+    isMenu = true;
+  }
 
-      default:
-
-        break;
-      }
-    }
-    else
+  if (isNewIcon && !isMenu && menuAnimationProgress >= 1)
+  {
+    Serial.println(menuAnimationProgress);
+    switch (currentIconIndex)
     {
-      btn_left.reset();
-      btn_right.attachClick(rightClick);
-      btn_left.attachClick(leftClick);
+    case MEDIACONTROL:
+      xTaskCreatePinnedToCore(TurnOnBluetooth, "TurnOnBluetoothTask", 10000, NULL, 1, &TurnOnBluetoothTask, 0);
+
+      btn_right.attachLongPressStart(MEDIACONTROL_RightHold);
+      btn_right.attachClick(MEDIACONTROL_RightClick);
+      btn_right.attachDoubleClick(MEDIACONTROL_RightDoubleClick);
+      btn_left.attachClick(MEDIACONTROL_LeftClick);
+      btn_left.attachDoubleClick(MEDIACONTROL_LeftDoubleClick);
+      break;
+
+    default:
+
+      break;
     }
 
     isNewIcon = false;
   }
+  else if (isNewIcon && isMenu && menuAnimationProgress <= 0)
+  {
+    xTaskCreatePinnedToCore(TurnOffBluetooth, "TurnOffBluetoothTask", 10000, NULL, 1, &TurnOffBluetoothTask, 0);
+    Serial.println(menuAnimationProgress);
+    menu_right.attachClick(rightClick);
+    menu_left.attachClick(leftClick);
+
+    isNewIcon = false;
+  }
+  else if (isNewIcon)
+  {
+    menu_right.attachClick(voidFunction);
+    menu_left.attachClick(voidFunction);
+    btn_right.attachClick(voidFunction);
+    btn_left.attachClick(voidFunction);
+  }
+
   /*
   if (millis() - last_time_display > 5000)
   {
     scanNetworks();
     last_time_display = millis();
   }
-  */
+
   if (millis() - target_time > 500)
   {
     planetTargetX = random(-4, 4);
     planetTargetY = random(-4, 4);
     target_time = millis();
   }
+  */
   if (millis() - loading_time > 16)
   {
+
     timer.startTime();
     sprite.fillScreen(TFT_BLACK);
-  
+
     progress = (millis() % 4000) / 4000.0f;
 
     if (isMenu)
     {
+      if (menuAnimationProgress > 0)
+      {
+        menuAnimationProgress -= menuAnimationSpeed;
+      }
+
       sprite.setCursor(50, 0);
 
       sprite.print(progress);
@@ -520,30 +612,99 @@ void loop()
       }
 
       loading();
+      sprite.fillSmoothCircle(64, 64, menuAnimationProgress * 50, TFT_WHITE);
     }
     else
     {
+      if (menuAnimationProgress < 1)
+      {
+        menuAnimationProgress += menuAnimationSpeed;
+      }
+      sprite.fillSmoothCircle(64, 64, menuAnimationProgress * 50, TFT_WHITE);
     }
 
-    //applyGaussianBlurToSprite(sprite, 2);
+    // applyGaussianBlurToSprite(sprite, 2);
     timer.displayTime();
-    sprite.setCursor(0, 20);
-    sprite.print(millis());
+    float battery_voltage = analogRead(4) / ADC_RESOLUTION * VOLTAGE_REFERENCE * VOLTAGE_DIVIDER_RATIO + VOLTAGE_DIVIDER_OFFSET;
+    uint8_t battery_percentage = ((battery_voltage - min_voltage) / (max_voltage - min_voltage)) * 100;
+    sprite.setTextColor(TFT_BLACK);
+    sprite.setCursor(2, 20);
+    sprite.fillSmoothRoundRect(0, 20, 19, 10, 2, TFT_DARKGREY);
+    sprite.fillSmoothRoundRect(0, 20, 19 * battery_percentage / 100, 10, 2, TFT_LIGHTGREY);
+
+    sprite.fillSmoothRoundRect(17, 23, 5, 4, 1, TFT_DARKGREY);
+    sprite.drawFastVLine(19, 20, 10, TFT_BLACK);
+    sprintf(str, "%d", battery_percentage);
+    sprite.drawCentreString(str, 9, 20, 2);
+    sprite.setTextColor(TFT_WHITE);
+
+    /*
+
+    sprite.println(millis());
+    sprite.println(bleKeyboard.isConnected());*/
     // memcpy(spriteBuffer2,sprite._img,  128 * 128 * 2);
     sprite.pushSprite(0, 0);
 
     loading_time = millis();
   }
-  
 }
 
 uint32_t graph_time = millis();
-uint8_t graphCurrentPositionY[10];
-uint8_t graphTargetY[10];
-float graphY[10];
 
-void drawMediaControl(int16_t x, int16_t y)
+const uint8_t graphPoints = 10;
+uint8_t graphCurrentPositionY[graphPoints];
+uint8_t graphTargetY[graphPoints];
+float graphY[graphPoints];
+
+void drawGraph(int16_t xOffset, int16_t yOffset, uint8_t width, uint8_t height, uint16_t color)
 {
+  width /= graphPoints;
+  if (millis() - graph_time > 500)
+  {
+    for (uint8_t i = 0; i < graphPoints; i++)
+    {
+      graphTargetY[i] = random(height - height / 4, height + height / 4);
+      constrain(graphTargetY[i],height - height / 4, height + height / 4);
+    }
+    graph_time = millis();
+  }
+  for (uint8_t i = 0; i < graphPoints; i++)
+  {
+    graphY[i] = lerp(graphY[i], (graphTargetY[i] - graphCurrentPositionY[i]) * 0.9f, 0.2f);
+    graphCurrentPositionY[i] += graphY[i];
+
+    // sprite.drawSpot(40 + 20 * i, graphCurrentPositionY[i], 7, TFT_WHITE);
+  }
+  for (uint8_t i = 0; i < graphPoints - 1; i++)
+  {
+    sprite.drawWideLine(width * i + xOffset, graphCurrentPositionY[i] + yOffset, width + width * i + xOffset, graphCurrentPositionY[i + 1] + yOffset, 1, color); // tft.color565(255 * i / 9, 255 * i / 9, 255 * i / 9));
+  }
+}
+
+void drawCenteredTriangle(int16_t x, int16_t y, int16_t size, uint16_t color, uint16_t bgcolor)
+{
+  sprite.fillTriangle(x - size / 2, y - size / 1.75f, x - size / 2, y + size / 1.75f, x + size / 2, y, bgcolor);
+  sprite.drawWideLine(x - size / 2, y - size / 1.75f, x - size / 2, y + size / 1.75f, 1, color);
+  sprite.drawWideLine(x - size / 2, y - size / 1.75f, x + size / 2, y, 1, color);
+  sprite.drawWideLine(x - size / 2, y + size / 1.75f, x + size / 2, y, 1, color);
+}
+
+void drawSkip(int16_t x, int16_t y, int16_t size, uint16_t color, uint16_t bgcolor)
+{
+  drawCenteredTriangle(x, y, size, color, bgcolor);
+  drawCenteredTriangle(x + size, y, size, color, bgcolor);
+}
+
+void drawCenteredRectangle(int16_t x, int16_t y, int16_t width, int16_t height, uint16_t color, uint16_t bgcolor)
+{
+  sprite.fillRect(x - width / 2, y - height / 2, width, height, bgcolor);
+  sprite.drawRect(x - width / 2, y - height / 2, width, height, color);
+}
+
+void drawCenteredPause(int16_t x, int16_t y, int16_t size, uint16_t color, uint16_t bgcolor)
+{
+  drawCenteredRectangle(x - size / 4, y, size / 3, size, color, bgcolor);
+  drawCenteredRectangle(x + size / 4, y, size / 3, size, color, bgcolor);
 }
 
 void drawGear(int32_t centerX, int32_t centerY, int32_t outerRadius, int32_t innerRadius, int32_t centerRadius, int32_t numTeeth, float rotation, uint32_t color)
@@ -555,6 +716,7 @@ void drawGear(int32_t centerX, int32_t centerY, int32_t outerRadius, int32_t inn
   const float toothAngleDegrees = 360.0f / numTeeth;
 
   sprite.fillCircle(centerX, centerY, innerRadius + 2, TFT_BLACK);
+  sprite.fillCircle(centerX, centerY, centerRadius, TFT_BLACK);
 
   sprite.drawSmoothRoundRect(centerX - innerRadius, centerY - innerRadius, innerRadius, innerRadius, 0, 0, TFT_WHITE, TFT_BLACK);
 
@@ -599,6 +761,7 @@ void drawPlanet(int16_t x, int16_t y)
     sprite.drawWideLine(point[(i + 0) % planetPoints].x + x, point[(i + 0) % planetPoints].y + y, point[(i + 1) % planetPoints].x + x, point[(i + 1) % planetPoints].y + y, 1, TFT_WHITE);
   }
 
+  // Small planet behind
   if ((progress > 0.1f) && (progress < 0.4f))
   {
     sprite.drawSpot(lerp(point[uint8_t(progress * planetPoints)].x, point[(uint8_t(progress * planetPoints) + 1) % planetPoints].x, fmod(progress * planetPoints, 1)) + x, lerp(point[uint8_t(progress * planetPoints)].y, point[(uint8_t(progress * planetPoints) + 1) % planetPoints].y, fmod(progress * planetPoints, 1)) + y, planetRadius * 0.25 + 1, TFT_WHITE);
@@ -617,6 +780,7 @@ void drawPlanet(int16_t x, int16_t y)
     sprite.drawWideLine(point[(i + 10) % planetPoints].x + x, point[(i + 10) % planetPoints].y + y, point[(i + 11) % planetPoints].x + x, point[(i + 11) % planetPoints].y + y, 1, TFT_WHITE);
   }
 
+  // Small planet in front
   if (!(((1.0f - progress) > 0.3) && ((1.0f - progress) < 0.8)))
   {
     sprite.drawSpot(0.75 * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].x, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].x, fmod((1.0f - progress) * planetPoints, 1)) + x, 0.75 * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].y, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].y, fmod((1.0f - progress) * planetPoints, 1)) + y, planetRadius * 0.1, TFT_WHITE);
@@ -629,25 +793,71 @@ void drawPlanet(int16_t x, int16_t y)
   }
 }
 
+void drawPRESENTATION(int16_t x, int16_t y)
+{
+  uint8_t boxSize = 50;
+
+  x += 64;
+  y += 64;
+  sprite.fillRoundRect(x - boxSize / 2, y - boxSize / 3, boxSize, boxSize / 1.5, 4, TFT_BLACK);
+  sprite.drawSmoothRoundRect(x - boxSize / 2, y - boxSize / 3, 5, 5, boxSize, boxSize / 1.5, TFT_WHITE, TFT_BLACK);
+  drawGraph(x - boxSize / 2+2, y - boxSize / 3, 10, 8, TFT_WHITE);
+}
+
+void drawMEDIACONTROL(int16_t x, int16_t y)
+{
+  y += 64;
+  x += 64;
+
+  if ((progress > 0.1f) && (progress < 0.4f))
+  {
+    drawCenteredPause(1.2f * lerp(point[uint8_t(progress * planetPoints)].x, point[(uint8_t(progress * planetPoints) + 1) % planetPoints].x, fmod(progress * planetPoints, 1)) + x, 1.2f * lerp(point[uint8_t(progress * planetPoints)].y, point[(uint8_t(progress * planetPoints) + 1) % planetPoints].y, fmod(progress * planetPoints, 1)) + y, 17, TFT_WHITE, TFT_BLACK);
+  }
+  if ((((1.0f - progress) > 0.3) && ((1.0f - progress) < 0.8)))
+  {
+    drawSkip(lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].x, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].x, fmod((1.0f - progress) * planetPoints, 1)) + x, lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].y, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].y, fmod((1.0f - progress) * planetPoints, 1)) + y, 10, TFT_WHITE, TFT_BLACK);
+  }
+
+  drawCenteredTriangle(x + 4, y, 35, TFT_WHITE, TFT_BLACK);
+
+  // Small planet in front
+  if (!(((1.0f - progress) > 0.3) && ((1.0f - progress) < 0.8)))
+  {
+    drawSkip(lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].x, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].x, fmod((1.0f - progress) * planetPoints, 1)) + x, lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].y, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].y, fmod((1.0f - progress) * planetPoints, 1)) + y, 10, TFT_WHITE, TFT_BLACK);
+  }
+  if (!((progress > 0.1f) && (progress < 0.4f)))
+  {
+    drawCenteredPause(1.2f * lerp(point[uint8_t(progress * planetPoints)].x, point[(uint8_t(progress * planetPoints) + 1) % planetPoints].x, fmod(progress * planetPoints, 1)) + x, 1.2f * lerp(point[uint8_t(progress * planetPoints)].y, point[(uint8_t(progress * planetPoints) + 1) % planetPoints].y, fmod(progress * planetPoints, 1)) + y, 17, TFT_WHITE, TFT_BLACK);
+  }
+}
+
+void drawSETTINGS(int16_t x, int16_t y)
+{
+  if ((((1.0f - progress) > 0.3) && ((1.0f - progress) < 0.8)))
+  {
+    drawGear(1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].x, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].x, fmod((1.0f - progress) * planetPoints, 1)) + x, 1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].y, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].y, fmod((1.0f - progress) * planetPoints, 1)) + y, 10, 7, 3, 5, -2 * progress, TFT_WHITE);
+    sprite.drawSpot(1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].x, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].x, fmod((1.0f - progress) * planetPoints, 1)) + x, 1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].y, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].y, fmod((1.0f - progress) * planetPoints, 1)) + y, planetRadius * 0.1, TFT_WHITE);
+  }
+  drawGear(x, y, 30, 25, 17, 9, progress, TFT_WHITE);
+  if (!(((1.0f - progress) > 0.3) && ((1.0f - progress) < 0.8)))
+  {
+    drawGear(1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].x, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].x, fmod((1.0f - progress) * planetPoints, 1)) + x, 1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].y, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].y, fmod((1.0f - progress) * planetPoints, 1)) + y, 10, 7, 3, 5, -2 * progress, TFT_WHITE);
+    sprite.drawSpot(1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].x, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].x, fmod((1.0f - progress) * planetPoints, 1)) + x, 1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].y, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].y, fmod((1.0f - progress) * planetPoints, 1)) + y, planetRadius * 0.1, TFT_WHITE);
+  }
+}
+
 void drawIcon(uint8_t icon, int16_t x, int16_t y)
 {
   switch (icon)
   {
+  case PRESENTATION:
+    drawPRESENTATION(x, y);
+    break;
   case MEDIACONTROL:
-    drawMediaControl(x, y);
+    drawMEDIACONTROL(x, y);
     break;
   case SETTINGS:
-    if ((((1.0f - progress) > 0.3) && ((1.0f - progress) < 0.8)))
-    {
-      drawGear(1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].x, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].x, fmod((1.0f - progress) * planetPoints, 1)) + x, 1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].y, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].y, fmod((1.0f - progress) * planetPoints, 1)) + y, 10, 7, 3, 5, -2 * progress, TFT_WHITE);
-      sprite.drawSpot(1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].x, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].x, fmod((1.0f - progress) * planetPoints, 1)) + x, 1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].y, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].y, fmod((1.0f - progress) * planetPoints, 1)) + y, planetRadius * 0.1, TFT_WHITE);
-    }
-    drawGear(x, y, 30, 25, 17, 9, progress, TFT_WHITE);
-    if (!(((1.0f - progress) > 0.3) && ((1.0f - progress) < 0.8)))
-    {
-      drawGear(1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].x, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].x, fmod((1.0f - progress) * planetPoints, 1)) + x, 1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].y, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].y, fmod((1.0f - progress) * planetPoints, 1)) + y, 10, 7, 3, 5, -2 * progress, TFT_WHITE);
-      sprite.drawSpot(1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].x, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].x, fmod((1.0f - progress) * planetPoints, 1)) + x, 1.5f * lerp(point2[uint8_t((1.0f - progress) * planetPoints + 14) % planetPoints].y, point2[(uint8_t((1.0f - progress) * planetPoints) + 15) % planetPoints].y, fmod((1.0f - progress) * planetPoints, 1)) + y, planetRadius * 0.1, TFT_WHITE);
-    }
+    drawSETTINGS(x, y);
     break;
 
   default:
@@ -656,32 +866,9 @@ void drawIcon(uint8_t icon, int16_t x, int16_t y)
   }
 }
 
-void drawGraph(int16_t xOffset, int16_t yOffset)
-{
-  if (millis() - graph_time > 250)
-  {
-    for (uint8_t i = 0; i < 10; i++)
-    {
-      graphTargetY[i] = random(8, 16);
-    }
-    graph_time = millis();
-  }
-  for (uint8_t i = 0; i < 10; i++)
-  {
-    graphY[i] = lerp(graphY[i], (graphTargetY[i] - graphCurrentPositionY[i]) * 0.9f, 0.2f);
-    graphCurrentPositionY[i] += graphY[i];
-
-    // sprite.drawSpot(40 + 20 * i, graphCurrentPositionY[i], 7, TFT_WHITE);
-  }
-  for (uint8_t i = 0; i < 9; i++)
-  {
-    sprite.drawWideLine(4 * i + xOffset, graphCurrentPositionY[i] + yOffset, 4 + 4 * i + xOffset, graphCurrentPositionY[i + 1] + yOffset, 1, TFT_DARKGREY); // tft.color565(255 * i / 9, 255 * i / 9, 255 * i / 9));
-  }
-}
-
 uint8_t scanNetworks()
 {
-  int n;// = WiFi.scanNetworks();
+  int n; // = WiFi.scanNetworks();
 
   if (n == 0)
   {
@@ -698,7 +885,7 @@ uint8_t scanNetworks()
     sprite.setCursor(0, 0);
     for (int i = 0; i < n; ++i)
     {
-      //sprite.println(WiFi.SSID(i));
+      // sprite.println(WiFi.SSID(i));
     }
   }
   return n;
@@ -775,6 +962,7 @@ void rightClick()
 
 void leftClick()
 {
+
   leftClicked = true;
   updateFirstButtonClickTime();
 }
