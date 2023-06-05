@@ -6,6 +6,7 @@
 #include "Interpolator.h"
 #include "IBMPlexMonoBold10.h"
 #include "IBMPlexMonoMedium12.h"
+#include "IBMPlexMonoMedium48.h"
 #include "BLEDevice.h"
 
 #include "BleKeyboard.h"
@@ -17,12 +18,13 @@ const float VOLTAGE_DIVIDER_OFFSET = 0.0; // voltage divider offset
 const float ADC_RESOLUTION = 4095.0;      // ADC resolution
 const float VOLTAGE_REFERENCE = 3.3;      // ADC voltage reference
 const float min_voltage = 3.0;            // minimum battery voltage
-const float max_voltage = 4.2;            // maximum battery voltage
+const float max_voltage = 4.1;            // maximum battery voltage
 
 BleKeyboard bleKeyboard;
 
 #define Bold10 IBMPlexMonoBold10
 #define Medium12 IBMPlexMonoMedium12
+#define Medium48 IBMPlexMonoMedium48
 
 using namespace Interpolator;
 
@@ -113,10 +115,38 @@ void leftClick();
 
 float progress = 0.0;
 
-#define PIN_BTN_L 0
-#define PIN_BTN_R 47
+#define PIN_BTN_L 47
+#define PIN_BTN_R 0
 
-PerlinNoise perlin(43);
+class Transition
+{
+public:
+  uint32_t localMilliseconds;
+  float milliseconds;
+  float startValue;
+  float endValue;
+  void value(float startValueL, float endValueL, float ms)
+  {
+
+    startValue = startValueL;
+    endValue = endValueL;
+    milliseconds = ms;
+    localMilliseconds = millis() - (milliseconds * (1 - constrain(float((millis() - localMilliseconds) / milliseconds), 0, 1))); // update the localMilliseconds to continue from the current position
+  }
+  float update()
+  {
+    float t = constrain(float((millis() - localMilliseconds) / milliseconds), 0, 1);
+
+    return lerp(startValue, endValue, Ease::inOut(t));
+  }
+  void reverseValue()
+  {
+    localMilliseconds = millis() - (milliseconds * (1 - constrain(float((millis() - localMilliseconds) / milliseconds), 0, 1))); // update the localMilliseconds to continue from the current position
+    float temp = startValue;
+    startValue = endValue;
+    endValue = temp;
+  }
+};
 
 OneButton btn_left(PIN_BTN_L, true);
 OneButton btn_right(PIN_BTN_R, true);
@@ -320,8 +350,154 @@ Point point2[planetPoints];
 
 Particle starParticles[50];
 
+// PRESENTATION
+uint8_t resetIconTextLength;
+uint8_t nextIconTextLength;
+uint8_t previousIconTextLength;
+uint8_t cancelIconTextLength;
+uint8_t confirmIconTextLength;
+
+Transition xReset;
+Transition yReset;
+Transition wReset;
+Transition hReset;
+Transition rReset;
+Transition colorReset;
+Transition xResetIcon;
+Transition yResetIcon;
+Transition colorResetIcon;
+
+Transition wLeftIcon;
+Transition colorLeftIcon;
+
+Transition wRightIcon;
+Transition colorRightIcon;
+
+uint8_t smallRadius = 4;
+uint8_t smallHeight = 12;
+uint8_t radius = 32;
+
+uint32_t PresentationCurrentTime;
+int8_t PresentationCurrentSlide = 1;
+bool isPresentation = false;
+
+void PRESENTATION_RightClick()
+{
+  PresentationCurrentSlide++;
+
+  if (PresentationCurrentSlide == 2)
+  {
+    bleKeyboard.write(KEY_RIGHT_ARROW);
+    xResetIcon.value(resetIconTextLength / 2 + 2, previousIconTextLength / 2 + 2, 200);
+    colorResetIcon.value(0, 127, 200);
+    wReset.value(resetIconTextLength + 6, previousIconTextLength + 6, 200);
+  }
+  else if (PresentationCurrentSlide <= 1)
+  {
+    colorLeftIcon.reverseValue();
+    colorRightIcon.reverseValue();
+    wLeftIcon.reverseValue();
+    wRightIcon.reverseValue();
+    xResetIcon.reverseValue();
+    yResetIcon.reverseValue();
+    colorReset.reverseValue();
+    xReset.reverseValue();
+    yReset.reverseValue();
+    wReset.reverseValue();
+    hReset.reverseValue();
+    rReset.reverseValue();
+  }
+  else
+  {
+    bleKeyboard.write(KEY_RIGHT_ARROW);
+  }
+}
+void PRESENTATION_LeftClick()
+{
+  PresentationCurrentSlide--;
+  if (PresentationCurrentSlide == 0)
+  {
+    colorLeftIcon.value(0, 127, 200);
+    colorRightIcon.value(0, 127, 200);
+    wLeftIcon.value(previousIconTextLength, confirmIconTextLength, 200);
+    wRightIcon.value(nextIconTextLength, cancelIconTextLength, 200);
+    xResetIcon.value(resetIconTextLength / 2 + 2, 64, 200);
+    yResetIcon.value(129 - smallHeight, 60, 200);
+    colorReset.value(0, 255, 200);
+    xReset.value(0, 65 - radius, 200);
+    yReset.value(128 - smallHeight, 65 - radius, 200);
+    wReset.value(resetIconTextLength + 6, 64, 200);
+    hReset.value(smallHeight, 64, 200);
+    rReset.value(smallRadius, radius, 200);
+  }
+  else if (PresentationCurrentSlide < 0)
+  {
+    colorLeftIcon.reverseValue();
+    colorRightIcon.reverseValue();
+    wLeftIcon.reverseValue();
+    wRightIcon.reverseValue();
+    xResetIcon.reverseValue();
+    yResetIcon.reverseValue();
+    colorReset.reverseValue();
+    xReset.reverseValue();
+    yReset.reverseValue();
+    wReset.reverseValue();
+    hReset.reverseValue();
+    rReset.reverseValue();
+    PresentationCurrentSlide = 1;
+    PresentationCurrentTime = millis();
+  }
+  else if (PresentationCurrentSlide == 1)
+  {
+    xResetIcon.value(previousIconTextLength / 2 + 2, resetIconTextLength / 2 + 2, 200);
+    colorResetIcon.reverseValue();
+    wReset.value(previousIconTextLength + 6, resetIconTextLength + 6, 200);
+  }
+
+  bleKeyboard.write(KEY_LEFT_ARROW);
+}
+
+// MEDIACONTROL
+
+void MEDIACONTROL_RightHold()
+{
+  if (btn_left.isIdle())
+  {
+    bleKeyboard.write(KEY_MEDIA_MUTE);
+  }
+}
+void MEDIACONTROL_RightClick()
+{
+  bleKeyboard.write(KEY_MEDIA_PLAY_PAUSE);
+}
+void MEDIACONTROL_RightDoubleClick()
+{
+  bleKeyboard.write(KEY_MEDIA_NEXT_TRACK);
+}
+void MEDIACONTROL_LeftClick()
+{
+  bleKeyboard.write(KEY_MEDIA_PLAY_PAUSE);
+}
+void MEDIACONTROL_LeftDoubleClick()
+{
+  bleKeyboard.write(KEY_MEDIA_PREVIOUS_TRACK);
+}
+
 void setup()
 {
+  colorLeftIcon.endValue = 0;
+  colorRightIcon.endValue = 0;
+  wLeftIcon.endValue = previousIconTextLength;
+  wRightIcon.endValue = nextIconTextLength;
+  xResetIcon.endValue = resetIconTextLength / 2 + 2;
+  yResetIcon.endValue = 129 - smallHeight;
+  xReset.endValue = 0;
+  yReset.endValue = 128 - smallHeight;
+  wReset.endValue = resetIconTextLength + 6;
+  hReset.endValue = smallHeight;
+  rReset.endValue = smallRadius;
+  colorReset.endValue = 0;
+
   pinMode(4, INPUT);
   // btn_left.setPressTicks(100);
   // btn_right.setPressTicks(100);
@@ -344,12 +520,19 @@ void setup()
   Serial.begin(921600);
 
   tft.init();
-  tft.setRotation(2);
+  tft.setRotation(0);
   sprite.createSprite(128, 128); // Create a sprite 128 x 128 pixels
 
   sprite.fillSprite(TFT_BLACK);
   sprite.loadFont(Medium12);
+
   sprite.pushSprite(0, 0);
+
+  resetIconTextLength = sprite.drawCentreString("RESET", 0, 0, 8);
+  nextIconTextLength = sprite.drawCentreString("NEXT", 0, 0, 8);
+  previousIconTextLength = sprite.drawCentreString("PREVIOUS", 0, 0, 8);
+  cancelIconTextLength = sprite.drawCentreString("CANCEL", 0, 0, 8);
+  confirmIconTextLength = sprite.drawCentreString("CONFIRM", 0, 0, 8);
 
   for (int i = 0; i < iconCount; i++)
   {
@@ -385,34 +568,9 @@ void voidFunction()
 {
 }
 
-void MEDIACONTROL_RightHold()
-{
-  if (btn_left.isIdle())
-  {
-    bleKeyboard.write(KEY_MEDIA_MUTE);
-  }
-}
-
-void MEDIACONTROL_RightClick()
-{
-  bleKeyboard.write(KEY_MEDIA_PLAY_PAUSE);
-}
-void MEDIACONTROL_RightDoubleClick()
-{
-  bleKeyboard.write(KEY_MEDIA_NEXT_TRACK);
-}
-void MEDIACONTROL_LeftClick()
-{
-  bleKeyboard.write(KEY_MEDIA_PLAY_PAUSE);
-}
-void MEDIACONTROL_LeftDoubleClick()
-{
-  bleKeyboard.write(KEY_MEDIA_PREVIOUS_TRACK);
-}
-
 unsigned long previousMillis = 0;
 float menuAnimationProgress = 0;
-float menuAnimationSpeed = 1.0f / 100.0f;
+float menuAnimationSpeed = 1.0f / 5.0f;
 
 TaskHandle_t TurnOffBluetoothTask;
 TaskHandle_t TurnOnBluetoothTask;
@@ -497,6 +655,46 @@ void loop()
     Serial.println(menuAnimationProgress);
     switch (currentIconIndex)
     {
+    case PRESENTATION:
+      xResetIcon.value(resetIconTextLength / 2 + 2, previousIconTextLength / 2 + 2, 200);
+      colorResetIcon.value(0, 127, 200);
+      wReset.value(resetIconTextLength + 6, previousIconTextLength + 6, 200);
+      xResetIcon.value(previousIconTextLength / 2 + 2, resetIconTextLength / 2 + 2, 200);
+      colorResetIcon.reverseValue();
+      wReset.value(previousIconTextLength + 6, resetIconTextLength + 6, 200);
+      colorLeftIcon.value(0, 127, 200);
+      colorRightIcon.value(0, 127, 200);
+      wLeftIcon.value(previousIconTextLength, confirmIconTextLength, 200);
+      wRightIcon.value(nextIconTextLength, cancelIconTextLength, 200);
+      xResetIcon.value(resetIconTextLength / 2 + 2, 64, 200);
+      yResetIcon.value(129 - smallHeight, 60, 200);
+      colorReset.value(0, 255, 200);
+      xReset.value(0, 65 - radius, 200);
+      yReset.value(128 - smallHeight, 65 - radius, 200);
+      wReset.value(resetIconTextLength + 6, 64, 200);
+      hReset.value(smallHeight, 64, 200);
+      rReset.value(smallRadius, radius, 200);
+      colorLeftIcon.reverseValue();
+      colorRightIcon.reverseValue();
+      wLeftIcon.reverseValue();
+      wRightIcon.reverseValue();
+      xResetIcon.reverseValue();
+      yResetIcon.reverseValue();
+      colorReset.reverseValue();
+      xReset.reverseValue();
+      yReset.reverseValue();
+      wReset.reverseValue();
+      hReset.reverseValue();
+      rReset.reverseValue();
+
+      xTaskCreatePinnedToCore(TurnOnBluetooth, "TurnOnBluetoothTask", 10000, NULL, 1, &TurnOnBluetoothTask, 0);
+
+      menu_right.attachClick(PRESENTATION_RightClick);
+      menu_left.attachClick(PRESENTATION_LeftClick);
+      PresentationCurrentSlide = 1;
+      PresentationCurrentTime = millis();
+      isPresentation = true;
+      break;
     case MEDIACONTROL:
       xTaskCreatePinnedToCore(TurnOnBluetooth, "TurnOnBluetoothTask", 10000, NULL, 1, &TurnOnBluetoothTask, 0);
 
@@ -520,7 +718,7 @@ void loop()
     Serial.println(menuAnimationProgress);
     menu_right.attachClick(rightClick);
     menu_left.attachClick(leftClick);
-
+    isPresentation = false;
     isNewIcon = false;
   }
   else if (isNewIcon)
@@ -620,7 +818,89 @@ void loop()
       {
         menuAnimationProgress += menuAnimationSpeed;
       }
-      sprite.fillSmoothCircle(64, 64, menuAnimationProgress * 50, TFT_WHITE);
+      switch (currentIconIndex)
+      {
+      case PRESENTATION:
+        sprite.loadFont(Medium48);
+        int16_t presentationCurrentTimeSeconds = 0;
+        if (isPresentation)
+        {
+          presentationCurrentTimeSeconds = (millis() - PresentationCurrentTime) / 1000;
+        }
+
+        if (bleKeyboard.isConnected())
+        {
+          sprite.fillSmoothCircle(128 - 5, 3, 3, TFT_GREEN);
+        }
+        else
+        {
+          sprite.fillSmoothCircle(128 - 5, 3, 3, TFT_RED);
+        }
+        sprite.setCursor(100, 44);
+        sprite.print(presentationCurrentTimeSeconds % 10);
+
+        sprintf(str, "%d", constrain(PresentationCurrentSlide, 1, 127));
+        sprite.setTextColor(TFT_DARKGREY);
+        sprite.drawCentreString(str, 64, 0, 8);
+        sprite.setCursor(72, 44);
+        sprite.setTextColor(TFT_WHITE);
+        sprite.print(presentationCurrentTimeSeconds / 10 % 6);
+        sprite.fillSmoothCircle(64, 74, 3, TFT_WHITE);
+        sprite.fillSmoothCircle(64, 54, 3, TFT_WHITE);
+        sprite.setCursor(28, 44);
+        sprite.print(presentationCurrentTimeSeconds / 60 % 10);
+        sprite.setCursor(0, 44);
+        sprite.print(presentationCurrentTimeSeconds / 600 % 6);
+
+        sprite.loadFont(Medium12);
+
+        sprite.fillSmoothRoundRect(128 - wRightIcon.update() - 5, 128 - smallHeight, wRightIcon.update() + 5, 12, smallRadius, TFT_DARKGREY);
+        if (colorRightIcon.update() > 64)
+        {
+          sprite.setTextColor(sprite.color565(colorRightIcon.update(), colorRightIcon.update(), colorRightIcon.update()));
+          sprite.drawCentreString("NEXT", 128 - wRightIcon.update() / 2 - 3, 129 - smallHeight, 8);
+          sprite.setTextColor(sprite.color565(127 - colorRightIcon.update(), 127 - colorRightIcon.update(), 127 - colorRightIcon.update()));
+          sprite.drawCentreString("CANCEL", 128 - wRightIcon.update() / 2 - 3, 129 - smallHeight, 8);
+        }
+        else
+        {
+          sprite.setTextColor(sprite.color565(colorRightIcon.update(), colorRightIcon.update(), colorRightIcon.update()));
+          sprite.drawCentreString("NEXT", 128 - wRightIcon.update() / 2 - 3, 129 - smallHeight, 8);
+        }
+        sprite.fillSmoothRoundRect(0, 128 - smallHeight, confirmIconTextLength + 5, 12, smallRadius, sprite.color565(colorLeftIcon.update(), colorLeftIcon.update(), colorLeftIcon.update()));
+        sprite.setTextColor(TFT_BLACK);
+        sprite.drawCentreString("CONFIRM", confirmIconTextLength / 2 + 2, 129 - smallHeight, 8);
+
+        if (PresentationCurrentSlide == 0)
+        {
+        }
+
+        sprite.fillSmoothRoundRect(xReset.update(), yReset.update(), wReset.update(), hReset.update(), rReset.update(), sprite.color565(255 - colorResetIcon.update(), colorResetIcon.update(), colorResetIcon.update()));
+
+        if (colorReset.update() > 64)
+        {
+          sprite.setTextColor(sprite.color565(colorReset.update() + colorResetIcon.update(), colorResetIcon.update(), colorResetIcon.update()));
+          sprite.drawCentreString("RESET", xResetIcon.update(), yResetIcon.update(), 8);
+          sprite.setTextColor(sprite.color565(255 - colorReset.update(), 0, 0));
+          sprite.drawCentreString("U SURE?", xResetIcon.update(), yResetIcon.update(), 8);
+        }
+        else if (colorResetIcon.update() < 127)
+        {
+
+          sprite.setTextColor(sprite.color565(colorReset.update() + colorResetIcon.update(), colorResetIcon.update(), colorResetIcon.update()));
+          sprite.drawCentreString("RESET", xResetIcon.update(), yResetIcon.update(), 8);
+        }
+
+        if (colorResetIcon.update() > 64)
+        {
+          sprite.setTextColor(sprite.color565(colorReset.update() + (127 - colorResetIcon.update()), 127 - colorResetIcon.update(), 127 - colorResetIcon.update()));
+          sprite.drawCentreString("PREVIOUS", previousIconTextLength / 2 + 2, 129 - smallHeight, 8);
+        }
+
+        sprite.setTextColor(TFT_WHITE);
+        break;
+      }
+      // sprite.fillSmoothCircle(64, 64, menuAnimationProgress * 50, TFT_WHITE);
     }
 
     // applyGaussianBlurToSprite(sprite, 2);
@@ -664,7 +944,7 @@ void drawGraph(int16_t xOffset, int16_t yOffset, uint8_t width, uint8_t height, 
     for (uint8_t i = 0; i < graphPoints; i++)
     {
       graphTargetY[i] = random(height - height / 4, height + height / 4);
-      constrain(graphTargetY[i],height - height / 4, height + height / 4);
+      constrain(graphTargetY[i], height - height / 4, height + height / 4);
     }
     graph_time = millis();
   }
@@ -801,7 +1081,7 @@ void drawPRESENTATION(int16_t x, int16_t y)
   y += 64;
   sprite.fillRoundRect(x - boxSize / 2, y - boxSize / 3, boxSize, boxSize / 1.5, 4, TFT_BLACK);
   sprite.drawSmoothRoundRect(x - boxSize / 2, y - boxSize / 3, 5, 5, boxSize, boxSize / 1.5, TFT_WHITE, TFT_BLACK);
-  drawGraph(x - boxSize / 2+2, y - boxSize / 3, 10, 8, TFT_WHITE);
+  drawGraph(x - boxSize / 2 + 2, y - boxSize / 3, 10, 8, TFT_WHITE);
 }
 
 void drawMEDIACONTROL(int16_t x, int16_t y)

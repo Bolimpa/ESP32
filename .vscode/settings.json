@@ -8,7 +8,9 @@
         "array": "cpp",
         "string_view": "cpp",
         "initializer_list": "cpp",
-        "utility": "cpp"
+        "utility": "cpp",
+        "optional": "cpp",
+        "system_error": "cpp"
     },
     "cSpell.words": [
         "DARKGREY",
